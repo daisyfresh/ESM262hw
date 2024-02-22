@@ -1,0 +1,14 @@
+---
+title: "262hw1"
+author: "Elizabeth Braun"
+date: "2024-02-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+I am taking this class for x reason blah blah blah
