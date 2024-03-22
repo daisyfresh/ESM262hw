@@ -1,0 +1,195 @@
+---
+title: "hw3_real"
+author: "Elizabeth Braun"
+date: "2024-03-17"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(purrr)
+library(ggplot2)
+```
+
+## Intro
+
+This is an analysis of the power required for different cars and car
+speeds on a highway. We're adding a new "super light" car, and computing
+the mean and max power using FOR loops and the pmap function.
+
+## Power function
+
+This function is going to calculate the amount of power needed to move a
+car at whichever given speed
+
+```{r setup, include=FALSE}
+power <- function(V, A, m) {
+  # Constants
+  rho <- 1.225 # kg/m^3, density of air
+  Cd <- 0.3 # Drag coefficient, assuming a common value for simplicity
+  
+  # Convert speed from km/hr to m/s
+  V_m_s <- V * 1000 / 3600 
+  
+  # Power calculation
+  P <- 0.5 * rho * Cd * A * V_m_s^3 + m * 9.81 * V_m_s # Simplified power equation
+  return(P)
+}
+```
+
+## Cars
+
+Here is where we define the specifications for each car
+
+```{r}
+possible_cars <- data.frame(
+  name = c("A", "B", "C", "Super Light"),
+  mass = c(20000, 65000, 38000, 5000), # in kg
+  area = c(22, 30, 22, 10) # in m^2
+)
+```
+
+## Speeds
+
+Here is where we generate speeds. The mean highway speed is 80 km/hr,
+the other speeds will be centered around that amount with a standard
+deviation of 10km/hr.
+
+```{r}
+set.seed(123) #random number generator for generating speeds
+nsample <- 200
+mean_speed <- 80 # km/hr
+sd_speed <- 10 # km/hr
+
+speed_samples <- rnorm(n = nsample, mean = mean_speed, sd = sd_speed)
+```
+
+## FOR loop
+
+The FOR loop: -initializes variables and generates 100 sample speeds
+based on the mean and sd, in m/s -loops through each car type defined
+above through each of the 100 sample speeds, calculates their power
+using the power function, and stores the resulting values -calculates
+the mean and max power from the power values for each car -stores all
+these calculations in the results data frame
+
+```{r}
+# Generate speeds in m/s
+set.seed(123) #same as above and ensures reproducibility
+nsample = 100
+mean_speed_kmh = 80
+sd_speed_kmh = 10
+mean_speed_ms = mean_speed_kmh / 3.6 #convert from km/h to m/s
+sd_speed_ms = sd_speed_kmh / 3.6 #convert from km/h to m/s
+
+#initialize data frames to store results
+results <- data.frame(car = character(), mean_power = numeric(), max_power = numeric(), stringsAsFactors = FALSE)
+
+powers <- as.data.frame(matrix(ncol=4, nrow=nsample))
+colnames(powers) = possible_cars$name
+
+#loop through each car type
+for (i in 1:nrow(possible_cars)) {
+  car <- possible_cars$name[i]
+  speeds <- rnorm(nsample, mean = mean_speed_ms, sd = sd_speed_ms)
+
+  
+    powers[,i] <- autopower(V = speeds, A = possible_cars$area[i], m = possible_cars$mass[i])
+    
+  
+  mean_power <- mean(powers[,i])
+  max_power <- max(powers[,i])
+  
+  results <- rbind(results, data.frame(car = car, mean_power = mean_power, max_power = max_power))
+}
+
+#pivot powers data frame to be longer 
+powers_pivot <- pivot_longer(powers,cols = A:'Super Light',names_to = "cars",values_to = "powers")
+
+
+results
+```
+
+## pmap
+
+Here we use the pmap function from the purrr package to get the mean and
+max power for each car type across the different sampled speeds. First
+we generate a vector of speeds, converted from km/hr to m/s:
+
+```{r}
+# Assuming a mean speed of 80 km/hr and standard deviation of 10 km/hr
+mean_speed_kmh <- 80
+sd_speed_kmh <- 10
+nsample <- 100
+
+# Convert mean and sd to m/s
+mean_speed_ms <- mean_speed_kmh / 3.6
+sd_speed_ms <- sd_speed_kmh / 3.6
+
+# Generate speeds
+set.seed(123) # for reproducibility
+speeds_ms <- rnorm(nsample, mean = mean_speed_ms, sd = sd_speed_ms)
+```
+
+Here we used pmap to compute the mean and max power for each car type
+(while assuming the possible_cars dataframe was already defined):
+
+```{r}
+autopower <- function(V, A, m) {
+  g <- 9.8 # m/s^2
+  rho <- 1.225 # kg/m^3
+  cdrag <- 0.3 # coefficient of drag
+  Pb <- (0.5 * rho * A * cdrag * V^3) + (m * g * V)
+  return(Pb)
+}
+
+# Function to compute mean and max power for a given car and speeds
+compute_powers <- function(A, m, speeds) {
+  powers <- pmap_dbl(list(V = speeds), autopower, A = A, m = m)
+  return(list(powers=powers))
+}
+
+
+# Apply compute_powers for each car
+results_pmap <- map2_dfc(possible_cars$area, possible_cars$mass, ~compute_powers(.x, .y, speeds_ms))
+colnames(results_pmap) = possible_cars$name
+
+
+##Pivot data frame longer
+powers_pivot_pmap <- pivot_longer(results_pmap,cols = A:'Super Light',names_to = "cars",values_to = "powers")
+
+mean_power_pmap <-apply(results_pmap, 2, mean)
+max_power_pmap <- apply(results_pmap, 2, max)
+
+mean_power_pmap
+max_power_pmap
+
+```
+
+## Plot the data
+
+```{r}
+
+ggplot(powers_pivot, aes(x = cars, y = powers, fill = cars)) +
+  geom_boxplot() +
+  labs(title = "Power Distribution for Different Types of Cars",
+       x = "Car Type",
+       y = "Power (Watts)") +
+  theme_minimal()
+```
+
+## Plot the pmap Data
+
+```{r}
+
+ggplot(powers_pivot_pmap, aes(x = cars, y = powers, fill = cars)) +
+  geom_boxplot() +
+  labs(title = "Power Distribution for Different Types of Cars",
+       x = "Car Type",
+       y = "Power (Watts)") +
+  theme_minimal()
+```
